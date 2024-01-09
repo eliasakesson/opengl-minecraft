@@ -1,19 +1,22 @@
 package org.swezyn;
 
+import org.lwjgl.BufferUtils;
+import org.swezyn.rendering.Camera;
+import org.swezyn.rendering.Shader;
 import org.swezyn.utilities.ImageParser;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.*;
 import org.lwjgl.system.*;
-import org.swezyn.utilities.Quaternion;
-import org.swezyn.utilities.Transform;
-import org.swezyn.utilities.Vector3;
-import org.joml.Vector3f;
 
 import java.nio.*;
 
 import static org.lwjgl.glfw.Callbacks.*;
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL15.*;
+import static org.lwjgl.opengl.GL20.*;
+import static org.lwjgl.opengl.GL30.glBindVertexArray;
+import static org.lwjgl.opengl.GL30.glGenVertexArrays;
 import static org.lwjgl.system.MemoryStack.*;
 import static org.lwjgl.system.MemoryUtil.*;
 
@@ -25,24 +28,12 @@ public class Window {
     // The window handle
     private long window;
 
-    private final Transform camera = new Transform(
-            new Vector3f(0, 0, -1.5f)
-    );
-
-    private double[] lastMouseX = new double[1];
-    private double[] lastMouseY = new double[1];
+    private final Camera camera = new Camera();
 
     public Window() {
         init();
         loop();
-
-        // Free the window callbacks and destroy the window
-        glfwFreeCallbacks(window);
-        glfwDestroyWindow(window);
-
-        // Terminate GLFW and free the error callback
-        glfwTerminate();
-        glfwSetErrorCallback(null).free();
+        cleanup();
     }
 
     private void init() {
@@ -108,136 +99,107 @@ public class Window {
         // Make the window visible
         glfwShowWindow(window);
     }
+
     private void loop() {
-        // This line is critical for LWJGL's interoperation with GLFW's
-        // OpenGL context, or any context that is managed externally.
-        // LWJGL detects the context that is current in the current thread,
-        // creates the GLCapabilities instance and makes the OpenGL
-        // bindings available for use.
-        GL.createCapabilities();
+        int shaderProgram = Shader.makeProgram("vertexShader.glsl", "fragShader.glsl");
+        if (shaderProgram == -1) {
+            System.err.println("Shader program failed to load!");
+            System.exit(-1);
+        }
 
-        // Set the clear color
-        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        int vao;
+        int vbo;
+        try (MemoryStack stack = stackPush()) {
+            FloatBuffer buffer = stackMallocFloat(3 * 24);
+            // Front face
+            buffer.put(-0.5f).put(-0.5f).put(0.5f);   // Vertex 1 (front-bottom-left)
+            buffer.put(0.5f).put(-0.5f).put(0.5f);    // Vertex 2 (front-bottom-right)
+            buffer.put(0.5f).put(0.5f).put(0.5f);     // Vertex 3 (front-top-right)
+            buffer.put(-0.5f).put(0.5f).put(0.5f);    // Vertex 4 (front-top-left)
 
-        glEnable(GL_DEPTH_TEST);
+// Back face
+            buffer.put(-0.5f).put(-0.5f).put(-0.5f);  // Vertex 5 (back-bottom-left)
+            buffer.put(0.5f).put(-0.5f).put(-0.5f);   // Vertex 6 (back-bottom-right)
+            buffer.put(0.5f).put(0.5f).put(-0.5f);    // Vertex 7 (back-top-right)
+            buffer.put(-0.5f).put(0.5f).put(-0.5f);   // Vertex 8 (back-top-left)
 
-        Transform transform = new Transform(
-                new Vector3f(0, 0, 0)
-        );
+// Left face
+            buffer.put(-0.5f).put(-0.5f).put(-0.5f);  // Vertex 9 (left-bottom-back)
+            buffer.put(-0.5f).put(-0.5f).put(0.5f);   // Vertex 10 (left-bottom-front)
+            buffer.put(-0.5f).put(0.5f).put(0.5f);    // Vertex 11 (left-top-front)
+            buffer.put(-0.5f).put(0.5f).put(-0.5f);   // Vertex 12 (left-top-back)
 
-        Transform transform2 = new Transform(
-                new Vector3f(.5f, -.5f, 0),
-                new Vector3f(0, 45, 0)
-        );
+// Right face
+            buffer.put(0.5f).put(-0.5f).put(-0.5f);   // Vertex 13 (right-bottom-back)
+            buffer.put(0.5f).put(-0.5f).put(0.5f);    // Vertex 14 (right-bottom-front)
+            buffer.put(0.5f).put(0.5f).put(0.5f);     // Vertex 15 (right-top-front)
+            buffer.put(0.5f).put(0.5f).put(-0.5f);    // Vertex 16 (right-top-back)
 
-        // Run the rendering loop until the user has attempted to close
-        // the window or has pressed the ESCAPE key.
-        while ( !glfwWindowShouldClose(window) ) {
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the framebuffer
+// Top face
+            buffer.put(-0.5f).put(0.5f).put(0.5f);    // Vertex 17 (top-front-left)
+            buffer.put(0.5f).put(0.5f).put(0.5f);     // Vertex 18 (top-front-right)
+            buffer.put(0.5f).put(0.5f).put(-0.5f);    // Vertex 19 (top-back-right)
+            buffer.put(-0.5f).put(0.5f).put(-0.5f);   // Vertex 20 (top-back-left)
 
-            double[] mouseX = new double[1];
-            double[] mouseY = new double[1];
-            glfwGetCursorPos(window, mouseX, mouseY);
+// Bottom face
+            buffer.put(-0.5f).put(-0.5f).put(0.5f);   // Vertex 21 (bottom-front-left)
+            buffer.put(0.5f).put(-0.5f).put(0.5f);    // Vertex 22 (bottom-front-right)
+            buffer.put(0.5f).put(-0.5f).put(-0.5f);   // Vertex 23 (bottom-back-right)
+            buffer.put(-0.5f).put(-0.5f).put(-0.5f);  // Vertex 24 (bottom-back-left)
+            buffer.flip();
 
-            if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
-                camera.rotation.x -= (float)(mouseY[0] - lastMouseY[0]) * 0.1f;
-                camera.rotation.y -= (float)(mouseX[0] - lastMouseX[0]) * 0.1f;
-            }
+            vao = glGenVertexArrays();
+            glBindVertexArray(vao);
 
-            lastMouseX[0] = mouseX[0];
-            lastMouseY[0] = mouseY[0];
+            vbo = glGenBuffers();
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
+        }
 
+        glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 3 * Float.BYTES, 0);
+        glEnableVertexAttribArray(0);
 
-            Vector3f forward = camera.rotation;
-            Vector3f right = camera.rotation;
-            System.out.println(forward.toString());
+        glBindVertexArray(0);
+        glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
 
-            double speed = 0.1;
+        glUseProgram(shaderProgram);
 
-            if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-                camera.position = camera.position.add(forward);
-            } else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-                camera.position = camera.position.add(forward);
-            } else if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-                camera.position = camera.position.add(right);
-            } else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-                camera.position = camera.position.add(right);
-            }
+        // Set defaults
+        glClearColor(1.0f, 0.4f, 0.4f, 0.0f);
+        //glEnable(GL_DEPTH_TEST);
+        //glEnable(GL_LIGHTING);
 
+        while (!glfwWindowShouldClose(window)) {
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            glLoadIdentity();
-            glMultMatrixf(camera.getTransformationMatrix().get(new float[16]));
+            glUseProgram(shaderProgram);
 
-            glMatrixMode(GL_MODELVIEW);
+            int projectionMatrixLocation = glGetUniformLocation(shaderProgram, "projectionMatrix");
+            glUniformMatrix4fv(projectionMatrixLocation, false, camera.getProjectionMatrix().get(new float[16]));
+            int viewMatrixLocation = glGetUniformLocation(shaderProgram, "viewMatrix");
+            glUniformMatrix4fv(viewMatrixLocation, false, camera.getViewMatrix().get(new float[16]));
 
-            drawTransform(transform);
-            drawTransform(transform2);
+            glBindVertexArray(vao);
+            glDrawArrays(GL_TRIANGLES, 0, 24);
+            glBindVertexArray(0);
 
             glfwSwapBuffers(window); // swap the color buffers
             glfwPollEvents();
+
+            int error = glGetError();
+            if (error != GL_NO_ERROR) {
+                System.err.println("OpenGL Error: " + error);
+            }
         }
     }
 
-    private void drawTransform(Transform transform){
-        glPushMatrix();
+    private void cleanup(){
+        // Free the window callbacks and destroy the window
+        glfwFreeCallbacks(window);
+        glfwDestroyWindow(window);
 
-        // Apply object transformations
-        glMultMatrixf(transform.getTransformationMatrix().get(new float[16]));
-
-        // Draw the front face of the cube
-        glBegin(GL_QUADS);
-        glColor3f(1, 0, 0);
-        glVertex3f(-0.5f, -0.5f, 0.5f);
-        glVertex3f(0.5f, -0.5f, 0.5f);
-        glVertex3f(0.5f, 0.5f, 0.5f);
-        glVertex3f(-0.5f, 0.5f, 0.5f);
-        glEnd();
-
-        // Draw the top face of the cube
-        glBegin(GL_QUADS);
-        glColor3f(0, 1, 0);
-        glVertex3f(-0.5f, 0.5f, 0.5f);
-        glVertex3f(0.5f, 0.5f, 0.5f);
-        glVertex3f(0.5f, 0.5f, -0.5f);
-        glVertex3f(-0.5f, 0.5f, -0.5f);
-        glEnd();
-
-        // Draw the back face of the cube
-        glBegin(GL_QUADS);
-        glColor3f(0, 0, 1);
-        glVertex3f(-0.5f, -0.5f, -0.5f);
-        glVertex3f(0.5f, -0.5f, -0.5f);
-        glVertex3f(0.5f, 0.5f, -0.5f);
-        glVertex3f(-0.5f, 0.5f, -0.5f);
-        glEnd();
-
-        // Draw the bottom face of the cube
-        glBegin(GL_QUADS);
-        glColor3f(1, 1, 0);
-        glVertex3f(-0.5f, -0.5f, -0.5f);
-        glVertex3f(0.5f, -0.5f, -0.5f);
-        glVertex3f(0.5f, -0.5f, 0.5f);
-        glVertex3f(-0.5f, -0.5f, 0.5f);
-        glEnd();
-
-        // Draw the left face of the cube
-        glBegin(GL_QUADS);
-        glColor3f(1, 0, 1);
-        glVertex3f(-0.5f, -0.5f, -0.5f);
-        glVertex3f(-0.5f, -0.5f,  0.5f);
-        glVertex3f(-0.5f,  0.5f,  0.5f);
-        glVertex3f(-0.5f,  0.5f, -0.5f);
-        glEnd();
-
-        // Draw the right face of the cube
-        glBegin(GL_QUADS);
-        glColor3f(0, 1, 1);
-        glVertex3f(0.5f, -0.5f,  0.5f);
-        glVertex3f(0.5f, -0.5f, -0.5f);
-        glVertex3f(0.5f,  0.5f, -0.5f);
-        glVertex3f(0.5f,  0.5f,  0.5f);
-        glEnd();
-
-        glPopMatrix();
+        // Terminate GLFW and free the error callback
+        glfwTerminate();
+        glfwSetErrorCallback(null).free();
     }
 }
