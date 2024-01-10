@@ -1,5 +1,7 @@
 package org.swezyn.rendering;
 
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL33;
 import org.swezyn.utilities.FileUtil;
 
 import static org.lwjgl.opengl.GL11.GL_FALSE;
@@ -10,12 +12,10 @@ public class Shader {
         String shaderSource = FileUtil.readResourceSource("shaders/" + path);
         if (shaderSource == null) return -1;
         int shader = glCreateShader(type);
-        glShaderSource(shader, shaderSource);
-        glCompileShader(shader);
-        if (glGetShaderi(shader, GL_COMPILE_STATUS) == GL_FALSE) {
-            System.err.println("Failed to compile shader at " + path + ": " + glGetShaderInfoLog(shader));
-        } else {
-            System.out.println("Successfully compiled shader at " + path);
+        GL33.glShaderSource(shader, shaderSource);
+        GL33.glCompileShader(shader);
+        if (GL33.glGetShaderi(shader, GL20.GL_COMPILE_STATUS) == GL_FALSE) {
+            System.err.println("Failed to compile shader at " + path + ": " + GL33.glGetShaderInfoLog(shader));
         }
         return shader;
     }
@@ -33,24 +33,18 @@ public class Shader {
         glDeleteShader(vertexShader);
         glDeleteShader(fragmentShader);
 
-        if(glGetProgrami(shaderProgram, GL_LINK_STATUS) == GL_FALSE)
-        {
-            int infoLogSize = glGetProgrami(shaderProgram, GL_INFO_LOG_LENGTH);
-            System.err.println(glGetProgramInfoLog(shaderProgram, infoLogSize));
+        if (GL20.glGetProgrami(shaderProgram, GL20.GL_LINK_STATUS) == GL_FALSE) {
+            int infoLogSize = GL20.glGetProgrami(shaderProgram, GL20.GL_INFO_LOG_LENGTH);
+            System.err.println(GL20.glGetProgramInfoLog(shaderProgram, infoLogSize));
             System.err.println("Failed to link shader program!");
             return -1;
-        } else {
-            System.out.println("Successfully linked shader program");
         }
-        glValidateProgram(shaderProgram);
-        if (glGetProgrami(shaderProgram, GL_VALIDATE_STATUS) == GL_FALSE)
-        {
-            int infoLogSize = glGetProgrami(shaderProgram, GL_INFO_LOG_LENGTH);
-            System.err.println(glGetProgramInfoLog(shaderProgram,infoLogSize));
+        GL20.glValidateProgram(shaderProgram);
+        if (GL20.glGetProgrami(shaderProgram, GL20.GL_VALIDATE_STATUS) == GL_FALSE) {
+            int infoLogSize = GL20.glGetProgrami(shaderProgram, GL20.GL_INFO_LOG_LENGTH);
+            System.err.println(GL20.glGetProgramInfoLog(shaderProgram, infoLogSize));
             System.err.println("Failed to validate shader program!");
             return -1;
-        } else {
-            System.out.println("Successfully validated shader program");
         }
 
         return shaderProgram;

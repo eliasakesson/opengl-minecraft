@@ -9,5 +9,5 @@ uniform mat4 viewMatrix;
 
 void main() {
     gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);
-    fragColor = vec3(0.5, 0.5, 1.0);
+    fragColor = vec3(0.5, 1.0, 0.5);
 }

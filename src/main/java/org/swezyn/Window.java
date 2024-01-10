@@ -1,29 +1,26 @@
 package org.swezyn;
 
-import org.lwjgl.BufferUtils;
+import org.lwjgl.glfw.GLFWErrorCallback;
+import org.lwjgl.glfw.GLFWImage;
+import org.lwjgl.glfw.GLFWVidMode;
+import org.lwjgl.system.MemoryStack;
 import org.swezyn.rendering.Camera;
-import org.swezyn.rendering.Shader;
+import org.swezyn.rendering.Rendering;
 import org.swezyn.utilities.ImageParser;
-import org.lwjgl.glfw.*;
-import org.lwjgl.opengl.*;
-import org.lwjgl.system.*;
 
-import java.nio.*;
+import java.nio.IntBuffer;
 
-import static org.lwjgl.glfw.Callbacks.*;
+import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
 import static org.lwjgl.glfw.GLFW.*;
-import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL15.*;
-import static org.lwjgl.opengl.GL20.*;
-import static org.lwjgl.opengl.GL30.glBindVertexArray;
-import static org.lwjgl.opengl.GL30.glGenVertexArrays;
-import static org.lwjgl.system.MemoryStack.*;
-import static org.lwjgl.system.MemoryUtil.*;
+import static org.lwjgl.opengl.GL11.GL_NO_ERROR;
+import static org.lwjgl.opengl.GL11.glGetError;
+import static org.lwjgl.system.MemoryStack.stackPush;
+import static org.lwjgl.system.MemoryUtil.NULL;
 
 public class Window {
-    private static final int INITIAL_WIDTH = 1280;
-    private static final int INITIAL_HEIGHT = 720;
-    private static final String TITLE = "Minecraft";
+    private static final int initialWidth = 1280;
+    private static final int initialHeight = 720;
+    private static final String title = "Minecraft";
 
     // The window handle
     private long window;
@@ -36,13 +33,17 @@ public class Window {
         cleanup();
     }
 
+    public long getWindow() {
+        return window;
+    }
+
     private void init() {
         // Setup an error callback. The default implementation
         // will print the error message in System.err.
         GLFWErrorCallback.createPrint(System.err).set();
 
         // Initialize GLFW. Most GLFW functions will not work before doing this.
-        if ( !glfwInit() )
+        if (!glfwInit())
             throw new IllegalStateException("Unable to initialize GLFW");
 
         // Configure GLFW
@@ -51,8 +52,8 @@ public class Window {
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE); // the window will be resizable
 
         // Create the window
-        window = glfwCreateWindow(INITIAL_WIDTH, INITIAL_HEIGHT, TITLE, NULL, NULL);
-        if ( window == NULL )
+        window = glfwCreateWindow(initialWidth, initialHeight, title, NULL, NULL);
+        if (window == NULL)
             throw new RuntimeException("Failed to create the GLFW window");
 
         // Icon
@@ -74,7 +75,7 @@ public class Window {
         });
 
         // Get the thread stack and push a new frame
-        try ( MemoryStack stack = stackPush() ) {
+        try (MemoryStack stack = stackPush()) {
             IntBuffer pWidth = stack.mallocInt(1); // int*
             IntBuffer pHeight = stack.mallocInt(1); // int*
 
@@ -101,87 +102,13 @@ public class Window {
     }
 
     private void loop() {
-        int shaderProgram = Shader.makeProgram("vertexShader.glsl", "fragShader.glsl");
-        if (shaderProgram == -1) {
-            System.err.println("Shader program failed to load!");
-            System.exit(-1);
-        }
+        InputHandler inputHandler = new InputHandler(this, camera);
 
-        int vao;
-        int vbo;
-        try (MemoryStack stack = stackPush()) {
-            FloatBuffer buffer = stackMallocFloat(3 * 24);
-            // Front face
-            buffer.put(-0.5f).put(-0.5f).put(0.5f);   // Vertex 1 (front-bottom-left)
-            buffer.put(0.5f).put(-0.5f).put(0.5f);    // Vertex 2 (front-bottom-right)
-            buffer.put(0.5f).put(0.5f).put(0.5f);     // Vertex 3 (front-top-right)
-            buffer.put(-0.5f).put(0.5f).put(0.5f);    // Vertex 4 (front-top-left)
-
-// Back face
-            buffer.put(-0.5f).put(-0.5f).put(-0.5f);  // Vertex 5 (back-bottom-left)
-            buffer.put(0.5f).put(-0.5f).put(-0.5f);   // Vertex 6 (back-bottom-right)
-            buffer.put(0.5f).put(0.5f).put(-0.5f);    // Vertex 7 (back-top-right)
-            buffer.put(-0.5f).put(0.5f).put(-0.5f);   // Vertex 8 (back-top-left)
-
-// Left face
-            buffer.put(-0.5f).put(-0.5f).put(-0.5f);  // Vertex 9 (left-bottom-back)
-            buffer.put(-0.5f).put(-0.5f).put(0.5f);   // Vertex 10 (left-bottom-front)
-            buffer.put(-0.5f).put(0.5f).put(0.5f);    // Vertex 11 (left-top-front)
-            buffer.put(-0.5f).put(0.5f).put(-0.5f);   // Vertex 12 (left-top-back)
-
-// Right face
-            buffer.put(0.5f).put(-0.5f).put(-0.5f);   // Vertex 13 (right-bottom-back)
-            buffer.put(0.5f).put(-0.5f).put(0.5f);    // Vertex 14 (right-bottom-front)
-            buffer.put(0.5f).put(0.5f).put(0.5f);     // Vertex 15 (right-top-front)
-            buffer.put(0.5f).put(0.5f).put(-0.5f);    // Vertex 16 (right-top-back)
-
-// Top face
-            buffer.put(-0.5f).put(0.5f).put(0.5f);    // Vertex 17 (top-front-left)
-            buffer.put(0.5f).put(0.5f).put(0.5f);     // Vertex 18 (top-front-right)
-            buffer.put(0.5f).put(0.5f).put(-0.5f);    // Vertex 19 (top-back-right)
-            buffer.put(-0.5f).put(0.5f).put(-0.5f);   // Vertex 20 (top-back-left)
-
-// Bottom face
-            buffer.put(-0.5f).put(-0.5f).put(0.5f);   // Vertex 21 (bottom-front-left)
-            buffer.put(0.5f).put(-0.5f).put(0.5f);    // Vertex 22 (bottom-front-right)
-            buffer.put(0.5f).put(-0.5f).put(-0.5f);   // Vertex 23 (bottom-back-right)
-            buffer.put(-0.5f).put(-0.5f).put(-0.5f);  // Vertex 24 (bottom-back-left)
-            buffer.flip();
-
-            vao = glGenVertexArrays();
-            glBindVertexArray(vao);
-
-            vbo = glGenBuffers();
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
-        }
-
-        glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 3 * Float.BYTES, 0);
-        glEnableVertexAttribArray(0);
-
-        glBindVertexArray(0);
-        glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-
-        glUseProgram(shaderProgram);
-
-        // Set defaults
-        glClearColor(1.0f, 0.4f, 0.4f, 0.0f);
-        //glEnable(GL_DEPTH_TEST);
-        //glEnable(GL_LIGHTING);
+        Rendering rendering = new Rendering(camera);
 
         while (!glfwWindowShouldClose(window)) {
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            glUseProgram(shaderProgram);
-
-            int projectionMatrixLocation = glGetUniformLocation(shaderProgram, "projectionMatrix");
-            glUniformMatrix4fv(projectionMatrixLocation, false, camera.getProjectionMatrix().get(new float[16]));
-            int viewMatrixLocation = glGetUniformLocation(shaderProgram, "viewMatrix");
-            glUniformMatrix4fv(viewMatrixLocation, false, camera.getViewMatrix().get(new float[16]));
-
-            glBindVertexArray(vao);
-            glDrawArrays(GL_TRIANGLES, 0, 24);
-            glBindVertexArray(0);
+            inputHandler.handleInput();
+            rendering.Render();
 
             glfwSwapBuffers(window); // swap the color buffers
             glfwPollEvents();
@@ -193,7 +120,7 @@ public class Window {
         }
     }
 
-    private void cleanup(){
+    private void cleanup() {
         // Free the window callbacks and destroy the window
         glfwFreeCallbacks(window);
         glfwDestroyWindow(window);
